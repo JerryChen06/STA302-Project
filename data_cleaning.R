@@ -587,7 +587,7 @@ numeric_classes <- names(general_classes)[general_classes %in% c("Ord", "YN", "Y
 # Classes that are factored
 factored_classes <- names(general_classes)[general_classes %in% c("Cat")]
 
-
+# Sorts the variables based on which has the most observations (non-NA values)
 num_responses <- sort(sapply(colnames(cleaned_data), FUN = function(column) {
 
   num_not_na <- sum(!is.na(cleaned_data[[column]]))
