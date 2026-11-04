@@ -1,3 +1,14 @@
+#' Code for reading the csv file, defining the classes and description for each variable, and cleaning data. 
+#' <dict> : Named vector in the form "Predictor Code" = "Predictor Description". Modified for readability, but full description name is present as comment. 
+#' <classes> Named vector in the form "Predictor Code" = "Class + Skip Annotations"
+#' <general_classes> Named vector in the form "Predictor Code" = "Class"
+#' <non_NA> Vector of the codes of all meaningful predictors
+#' <cleaned_data> Dataframe containing all observations for all variables. Skipped values set to NA. Categorical variables are factored. 
+#' <
+
+# Also includes vector of all factored (categorical) variables and numeric variables as separate vectors. 
+# Includes incomplete 
+
 library(tidyverse)
 library(viridis)
 library(circlize)
@@ -538,6 +549,38 @@ general_classes <- sub(" .*", "", classes)
 # All variables that are not useless
 non_NA <- names(classes)[classes != "NA"]
 
+# Named list defining the coding for each categorical predictor
+categorical_codes <- list(
+  "COLMODE" = NULL,
+  "COLMODEY" = NULL, 
+  "COLMODEP" = NULL, 
+  "GEOGPRV" = NULL,
+  "GEODGHR4" = NULL, 
+  "EDDVH3" = c("1" = "Less than secondary", "2" = "Secondary, no post-secondary", "3" = "Post-secondary"),   
+  "DHH_SEX" = c("1" = "Male", "2" = "Female"),  
+  "HWTDGISW" = NULL,
+  "HWTDGWHO" = NULL, 
+  "HWTDGBCC" = c("1" = "Normal/Underweight", "2" = "Overweight/Obese"), 
+  "WTP_50" = NULL,   
+  "COV2_030" = NULL,
+  "COV2_041" = NULL, 
+  "WDMDGDIF" = NULL,
+  "OHM3_05" = NULL,
+  "PAADVACV" = NULL,
+  "SBE_005" = NULL,
+  "CSSG20" = NULL,
+  "SMKDVSTY" = NULL,
+  "ECVDVSMK" = NULL,
+  "ECV2_15" = NULL,
+  "ALCDVTTM" = NULL, 
+  "FLU_10" = NULL,
+  "FLU_15" = NULL, 
+  "RHC_05" = NULL,
+  "LBFDVPFT" = NULL,
+  "LBFDGWSS" = NULL
+)
+
+# Looping across each non-NA variable
 cleaned_data <- lapply(non_NA, FUN = function(column) {
 
   complete_class <- str_split_1(classes[column], " ")
@@ -553,41 +596,54 @@ cleaned_data <- lapply(non_NA, FUN = function(column) {
   # Replacing all skipped options to NA
   cleaned_vector[cleaned_vector %in% skipped_options] <- NA
 
-  # Adjusting for each class
+  # ADJUSTING FOR EACH CLASS
 
   # If categorical, then just return the same vector but factorized
   if (root_class == "Cat") {
+
+    # Will replace values with categorical keys
+    key <- categorical_codes[[column]]
+
+    # Only changing if we added the key
+    if (!is.null(key)) {
+      cleaned_vector <- key[cleaned_vector]
+    }
+
     return(factor(cleaned_vector))
   }
 
-  # If categorical with ordering, or numeric, or YNC, then just return the same vector
-  if (root_class %in% c("Ord", "Num", "YNC")) {
-    return(cleaned_vector)
-  }
-  # If YN, then return the same vector but replacing all 2's with 0's. This is done to match "No" to 0 and "Yes" to 1 for consistency
-  if (root_class == "YN") {
-    cleaned_vector[cleaned_vector == 2] <- 0
+  # If categorical with ordering, or numeric, then just return the same vector
+  if (root_class %in% c("Ord", "Num")) {
     return(cleaned_vector)
   }
 
-  # If YNDK, then return the same vector but replacing 2's with 0's and 3's with 2's, so we have No = 0, Yes = 1, Don't know = 2. Then factor it
-  if (root_class == "YNDK") {
+  # If YN, then return the same vector but replacing all 2's with 0's. This is done to match "No" to 0 and "Yes" to 1 for consistency
+  # Will also factor
+  if (root_class %in% c("YN", "YNC", "YNDK")) {
     cleaned_vector[cleaned_vector == 2] <- 0
-    cleaned_vector[cleaned_vector == 3] <- 0
-    return(cleaned_vector)
+    cleaned_vector[cleaned_vector == 3] <- 2 # Case when root_class == "YNDK", since Don't Know is 3
+    
+    # Assigning known factors
+    cleaned_vector <- as.character(cleaned_vector)
+
+    cleaned_vector[cleaned_vector == 0] <- "No"
+    cleaned_vector[cleaned_vector == 1] <- "Yes"
+    cleaned_vector[cleaned_vector == 2] <- "Don't Know"
+    
+    return(factor(cleaned_vector))
   }
 
 }) |>
-  setNames(non_NA) |>
+  setNames(non_NA) |> 
   as_tibble()
 
 # Classes that are purely numeric (not factored)
-numeric_classes <- names(general_classes)[general_classes %in% c("Ord", "YN", "YNC", "Num")]
+numeric_classes <- names(general_classes)[general_classes %in% c("Ord", "Num")]
 
 # Classes that are factored
-factored_classes <- names(general_classes)[general_classes %in% c("Cat")]
+factored_classes <- names(general_classes)[general_classes %in% c("Cat", "YN", "YNC")]
 
-# Sorts the variables based on which has the most observations (non-NA values)
+
 num_responses <- sort(sapply(colnames(cleaned_data), FUN = function(column) {
 
   num_not_na <- sum(!is.na(cleaned_data[[column]]))
