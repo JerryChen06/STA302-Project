@@ -587,7 +587,7 @@ cleaned_data <- lapply(non_NA, FUN = function(column) {
   # If the user skipped, what number would it be? 
   skipped_options <- as.numeric(setdiff(complete_class, root_class))
 
-  cleaned_vector <- pumf[[column]]
+  cleaned_vector <- original_data[[column]]
 
   # Replacing all skipped options to NA
   cleaned_vector[cleaned_vector %in% skipped_options] <- NA
