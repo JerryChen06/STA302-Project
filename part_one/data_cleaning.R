@@ -9,9 +9,6 @@
 #' <factored_classes> Vector of the codes of all categorical variables that are factored in the data (includes all Y/N variables)
 
 library(tidyverse)
-library(viridis)
-library(circlize)
-library(ComplexHeatmap)
 
 original_data <- read_csv(
     "/Users/jerrychen/Desktop/StatsFinalProject/Datasets/CSV/Data_Données/pumf_cchs.csv"
