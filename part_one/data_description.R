@@ -1,3 +1,8 @@
+library(moments)
+library(knitr)
+
+source("data_cleaning.R", echo = FALSE)
+
 # Histogram of response variable ----
 relevant_predictors <- c(
   "PAADVVOL", 
@@ -45,10 +50,11 @@ ggplot(subsetted_df, aes(x = LSM_01)) +
   )
 
 
-# Table
-library(moments)
+# Tables
 
-predictor_table_numeric <- cleaned_data |>
+
+# Numeric Table
+numeric_table <- cleaned_data |>
   select(all_of(relevant_predictors)) |>
   select(any_of(numeric_classes)) |>
   pivot_longer(cols = everything(), names_to = "predictor", values_to = "value") |>
@@ -57,35 +63,75 @@ predictor_table_numeric <- cleaned_data |>
     lowest = min(value, na.rm = TRUE),
     highest = max(value, na.rm = TRUE),
     range = paste0(round(lowest, 1), " - ", round(highest, 1)),
-    variance = var(value, na.rm = TRUE),
-    skewness = skewness(value, na.rm = TRUE),
+    stdev = round(sd(value, na.rm = TRUE), 1),
+    skewness = round(skewness(value, na.rm = TRUE), 1),
     skipped = sum(1*is.na(value)),
     total = n(),
-    num_skipped = paste0(skipped, " / ", total)
+    num_skipped = paste0(skipped, " / ", total),
+    avg = round(mean(value, na.rm = TRUE), 1)
   ) |>
   mutate(
     description = dict[predictor]
   ) |>
-  select(predictor, description, range, variance, skewness, num_skipped)
+  select(predictor, avg, description, range, stdev, skewness, num_skipped) |>
+  mutate(type = "Numeric", distribution = "-") |>
+  select(
+    "Predictor Code" = predictor,
+    "Predictor Description" = description,
+    "Type" = type,
+    "Possible Values (Range)" = range,
+    "Mean/Mode" = avg,
+    "Stdev" = stdev,
+    "Skewness" = skewness,
+    "Distribution (% of answered)" = distribution, 
+    "# Skipped" = num_skipped
+  )
 
-predictor_table_factored <- cleaned_data |>
-  select(all_of(relevant_predictors)) |>
-  select(any_of(factored_classes)) |>
-  pivot_longer(cols = everything(), names_to = "predictor", values_to = "value") |>
+# Categorical Table
+categorical_long <- cleaned_data |>
+  select(any_of(intersect(relevant_predictors, factored_classes))) |>
+  mutate(across(everything(), as.character)) |>
+  pivot_longer(everything(), names_to = "predictor", values_to = "value")
+
+level_summary <- categorical_long |>
+  filter(!is.na(value)) |>
+  count(predictor, value) |>                           
+  mutate(.by = predictor, pct = 100 * n / sum(n)) |>  
+  arrange(predictor, desc(n)) |>
+  summarize(
+    .by = predictor,
+    n_levels     = n(),
+    mode         = first(value),                      
+    distribution = str_flatten(head(sprintf("%s %.0f%%", value, pct), 5), ", ") 
+  )
+
+categorical_table <- categorical_long |>
   group_by(predictor) |>
   summarize(
-    range = n_distinct(value),
-    variance = var(as.numeric(levels(value)[value]), na.rm = TRUE),
-    skewness = skewness(as.numeric(levels(value)[value]), na.rm = TRUE),
-    skipped = sum(1*is.na(value)),
-    total = n(),
-    num_skipped = paste0(skipped, " / ", total)
+    skipped = sum(is.na(value)), 
+    total = n()
   ) |>
+  left_join(level_summary, by = "predictor") |> 
   mutate(
-    description = dict[predictor]
+    description = dict[predictor],
+    type        = "Categorical",
+    num_skipped = paste0(skipped, " / ", total),
   ) |>
-  select(predictor, description, range, variance, skewness, num_skipped)
+  mutate(stdev = "-", skewness = "-", range = paste0(n_levels, " levels")) |>
+  select(
+    "Predictor Code" = predictor, 
+    "Predictor Description" = description, 
+    "Type" = type,
+    "Possible Values (Range)" = range,
+    "Mean/Mode" = mode,
+    "Stdev" = stdev,
+    "Skewness" = skewness,
+    "Distribution (% of answered)" = distribution, 
+    "# Skipped" = num_skipped
+  )
 
-predictor_table <- rbind(predictor_table_numeric, predictor_table_factored)
 
-write_csv(predictor_table, file = "predictor_table.csv")
+predictor_table <- rbind(numeric_table, categorical_table)
+
+# Prints the table as LaTeX cuz I'm lazy and don't feel like writing it LMAO
+kable(predictor_table, format = "latex")
