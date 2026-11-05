@@ -1,20 +1,19 @@
 #' Code for reading the csv file, defining the classes and description for each variable, and cleaning data. 
+#' <cleaned_data> Dataframe containing all observations for all variables. Skipped values set to NA. Categorical variables are factored. 
 #' <dict> : Named vector in the form "Predictor Code" = "Predictor Description". Modified for readability, but full description name is present as comment. 
 #' <classes> Named vector in the form "Predictor Code" = "Class + Skip Annotations"
+#' <categorical_codes> List of named vectors, where each element corresponds to a predictor code, and the named vector maps a value to its meaning
 #' <general_classes> Named vector in the form "Predictor Code" = "Class"
 #' <non_NA> Vector of the codes of all meaningful predictors
-#' <cleaned_data> Dataframe containing all observations for all variables. Skipped values set to NA. Categorical variables are factored. 
-#' <
-
-# Also includes vector of all factored (categorical) variables and numeric variables as separate vectors. 
-# Includes incomplete 
+#' <numeric_classes> Vector of the codes of all ord. cat. and numeric variables
+#' <factored_classes> Vector of the codes of all categorical variables that are factored in the data (includes all Y/N variables)
 
 library(tidyverse)
 library(viridis)
 library(circlize)
 library(ComplexHeatmap)
 
-pumf <- read_csv(
+original_data <- read_csv(
     "/Users/jerrychen/Desktop/StatsFinalProject/Datasets/CSV/Data_Données/pumf_cchs.csv"
 )
 
@@ -641,7 +640,7 @@ cleaned_data <- lapply(non_NA, FUN = function(column) {
 numeric_classes <- names(general_classes)[general_classes %in% c("Ord", "Num")]
 
 # Classes that are factored
-factored_classes <- names(general_classes)[general_classes %in% c("Cat", "YN", "YNC")]
+factored_classes <- names(general_classes)[general_classes %in% c("Cat", "YN", "YNC", "YNDK")]
 
 
 num_responses <- sort(sapply(colnames(cleaned_data), FUN = function(column) {
