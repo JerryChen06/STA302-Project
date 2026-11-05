@@ -587,15 +587,21 @@ cleaned_data <- lapply(non_NA, FUN = function(column) {
   # If the user skipped, what number would it be? 
   skipped_options <- as.numeric(setdiff(complete_class, root_class))
 
+  # Anything that ends with 6 is a valid skip
+  valid_skip <- skipped_options[endsWith(as.character(skipped_options), "6")]
+  
   cleaned_vector <- original_data[[column]]
 
-  # Replacing all skipped options to NA
-  cleaned_vector[cleaned_vector %in% skipped_options] <- NA
+  # Setting all valid skips to NA. Other skips will be set to the mean/mode later in the code
+  cleaned_vector[cleaned_vector == valid_skip] <- NA
 
   # ADJUSTING FOR EACH CLASS
 
   # If categorical, then just return the same vector but factorized
   if (root_class == "Cat") {
+
+    # Setting other skips as the mode (median imputation)
+    cleaned_vector[cleaned_vector %in% skipped_options] <- names(which.max(table(cleaned_vector[!is.na(cleaned_vector)])))
 
     # Will replace values with categorical keys
     key <- categorical_codes[[column]]
@@ -610,12 +616,19 @@ cleaned_data <- lapply(non_NA, FUN = function(column) {
 
   # If categorical with ordering, or numeric, then just return the same vector
   if (root_class %in% c("Ord", "Num")) {
+    # Setting other skips as the mean (mean imputation)
+    cleaned_vector[cleaned_vector %in% skipped_options] <- mean(cleaned_vector, na.rm = TRUE)
+
     return(cleaned_vector)
   }
 
   # If YN, then return the same vector but replacing all 2's with 0's. This is done to match "No" to 0 and "Yes" to 1 for consistency
   # Will also factor
   if (root_class %in% c("YN", "YNC", "YNDK")) {
+
+    # Setting other skips as the mode (median imputation)
+    cleaned_vector[cleaned_vector %in% skipped_options] <- names(which.max(table(cleaned_vector[!is.na(cleaned_vector)])))
+
     cleaned_vector[cleaned_vector == 2] <- 0
     cleaned_vector[cleaned_vector == 3] <- 2 # Case when root_class == "YNDK", since Don't Know is 3
     
@@ -638,3 +651,11 @@ numeric_classes <- names(general_classes)[general_classes %in% c("Ord", "Num")]
 
 # Classes that are factored
 factored_classes <- names(general_classes)[general_classes %in% c("Cat", "YN", "YNC", "YNDK")]
+
+
+num_responses <- sort(sapply(colnames(cleaned_data), FUN = function(column) {
+
+  num_not_na <- sum(!is.na(cleaned_data[[column]]))
+}), decreasing = TRUE)
+
+names(num_responses) <- dict[names(num_responses)]
