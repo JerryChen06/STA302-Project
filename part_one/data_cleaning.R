@@ -638,11 +638,3 @@ numeric_classes <- names(general_classes)[general_classes %in% c("Ord", "Num")]
 
 # Classes that are factored
 factored_classes <- names(general_classes)[general_classes %in% c("Cat", "YN", "YNC", "YNDK")]
-
-
-num_responses <- sort(sapply(colnames(cleaned_data), FUN = function(column) {
-
-  num_not_na <- sum(!is.na(cleaned_data[[column]]))
-}), decreasing = TRUE)
-
-names(num_responses) <- dict[names(num_responses)]
