@@ -11,7 +11,7 @@
 library(tidyverse)
 
 original_data <- read_csv(
-    "/Users/jerrychen/Desktop/StatsFinalProject/Datasets/CSV/Data_Données/pumf_cchs.csv"
+    "/Users/dazedinthecity/Desktop/STA302/CCHS-PUMF-2022/Data_Données/pumf_cchs.csv"
 )
 
 dict <- c(
@@ -587,15 +587,21 @@ cleaned_data <- lapply(non_NA, FUN = function(column) {
   # If the user skipped, what number would it be? 
   skipped_options <- as.numeric(setdiff(complete_class, root_class))
 
+  # Anything that ends with 6 is a valid skip
+  valid_skip <- skipped_options[endsWith(as.character(skipped_options), "6")]
+  
   cleaned_vector <- original_data[[column]]
 
-  # Replacing all skipped options to NA
-  cleaned_vector[cleaned_vector %in% skipped_options] <- NA
+  # Setting all valid skips to NA. Other skips will be set to the mean/mode later in the code
+  cleaned_vector[cleaned_vector == valid_skip] <- NA
 
   # ADJUSTING FOR EACH CLASS
 
   # If categorical, then just return the same vector but factorized
   if (root_class == "Cat") {
+
+    # Setting other skips as the mode (median imputation)
+    cleaned_vector[cleaned_vector %in% skipped_options] <- names(which.max(table(cleaned_vector[!is.na(cleaned_vector)])))
 
     # Will replace values with categorical keys
     key <- categorical_codes[[column]]
@@ -610,12 +616,19 @@ cleaned_data <- lapply(non_NA, FUN = function(column) {
 
   # If categorical with ordering, or numeric, then just return the same vector
   if (root_class %in% c("Ord", "Num")) {
+    # Setting other skips as the mean (mean imputation)
+    cleaned_vector[cleaned_vector %in% skipped_options] <- mean(cleaned_vector, na.rm = TRUE)
+
     return(cleaned_vector)
   }
 
   # If YN, then return the same vector but replacing all 2's with 0's. This is done to match "No" to 0 and "Yes" to 1 for consistency
   # Will also factor
   if (root_class %in% c("YN", "YNC", "YNDK")) {
+
+    # Setting other skips as the mode (median imputation)
+    cleaned_vector[cleaned_vector %in% skipped_options] <- names(which.max(table(cleaned_vector[!is.na(cleaned_vector)])))
+
     cleaned_vector[cleaned_vector == 2] <- 0
     cleaned_vector[cleaned_vector == 3] <- 2 # Case when root_class == "YNDK", since Don't Know is 3
     
@@ -638,3 +651,81 @@ numeric_classes <- names(general_classes)[general_classes %in% c("Ord", "Num")]
 
 # Classes that are factored
 factored_classes <- names(general_classes)[general_classes %in% c("Cat", "YN", "YNC", "YNDK")]
+
+
+num_responses <- sort(sapply(colnames(cleaned_data), FUN = function(column) {
+
+  num_not_na <- sum(!is.na(cleaned_data[[column]]))
+}), decreasing = TRUE)
+
+names(num_responses) <- dict[names(num_responses)]
+
+num_vars <- c("LSM_01", "PAADVVOL", "PAA_15A", "LBFDGHPW")
+cat_vars <- c("GEN_05", "GEN_01", "GEN_10", "INCDGHH", "EDDVH3", "FSCDVHF2", "DHH_SEX")
+
+vars <- c(num_vars, cat_vars)
+
+model_data <- cleaned_data |>
+  drop_na(all_of(vars))
+
+model <- lm(
+  LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = model_data
+)
+
+# residuals and fitted values and qq plot
+cap <- list("Figure 1: Residuals vs Fitted", "Figure 2: Normal Q-Q")
+
+png("resid_qq.png", width = 3000, height = 1000, res = 120)
+par(mfrow = c(1, 2))
+plot(model, which = 1, caption = cap, sub.caption = "")
+plot(model, which = 2, caption = cap, sub.caption = "")
+par(mfrow = c(1, 1))
+dev.off()
+
+dev.off()
+
+# pairwise of predictors
+png("pairs.png", width = 1000, height = 1000, res = 120)
+
+model_data %>%
+  select(LSM_01, PAADVVOL, LBFDGHPW, GEN_05, GEN_01, GEN_10) %>%
+  drop_na() %>%
+  slice_sample(n = 2000) %>%
+  mutate(across(everything(), as.numeric)) %>%
+  pairs(pch = 19, col = rgb(0, 0, 1, alpha = 0.2),
+        main = "Figure 3: Pairwise Relationships of Selected Variables")
+
+dev.off()
+
+# residuals to predictors
+png("resid_pred.png", width = 1000, height = 1000, res = 120)
+predictors <- c(num_vars, cat_vars)
+res <- resid(model)
+mf <- model.frame(model)   # only the rows actually used in the fit
+
+png("resid_vs_predictors.png", width = 1800, height = 1600, res = 120)
+par(mfrow = c(4, 3), oma = c(0, 0, 3, 0))
+
+for (v in predictors) {
+  x <- mf[[v]]
+
+  if (is.numeric(x)) {
+    plot(x, res, xlab = v, ylab = "Residuals",
+         main = paste("Residuals vs", v), pch = 16, col = rgb(0, 0, 0, 0.3))
+    lines(lowess(x, res), col = "red", lwd = 2)
+  } else {
+    op <- par(mar = c(9, 4, 4, 2) + 0.1)          # extra bottom margin
+    boxplot(res ~ x, xlab = "", ylab = "Residuals",
+            main = paste("Residuals vs", v), las = 2)
+    title(xlab = v, line = 8)                      # title below the labels
+    par(op)                                        # restore margins
+  }
+
+  abline(h = 0, lty = 2, col = "gray40")
+}
+
+mtext("Figure 4: Residuals vs Predictors", outer = TRUE, cex = 1.3, font = 2, line = 0.5)
+
+par(mfrow = c(1, 1), oma = c(0, 0, 0, 0))
+dev.off()
