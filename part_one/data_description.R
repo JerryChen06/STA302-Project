@@ -3,7 +3,7 @@ library(knitr)
 
 source("data_cleaning.R", echo = FALSE)
 
-# Histogram of response variable ----
+# Figure 1. Histogram of all valid “general life satisfaction” responses ----
 relevant_predictors <- c(
   "PAADVVOL", 
   "PAA_15A",
@@ -18,26 +18,32 @@ relevant_predictors <- c(
 )
 
 # Subsetting data to just predictors and filtering out skipped values
-subsetted_df <- cleaned_data |>
+model_data <- cleaned_data |>
   select(
     LSM_01, 
     all_of(relevant_predictors)
   ) |>
   drop_na()
 
-ggplot(subsetted_df, aes(x = LSM_01)) + 
-  geom_bar(stat = "count") + 
+ggplot(model_data, aes(x = LSM_01)) + 
+  geom_bar(stat = "count", color = "black") + 
   theme_minimal() + 
   scale_x_continuous(
     breaks = 0:10
   ) +
   labs(
     x = "General Life Satisfaction: 0 (Very dissatisfied) to 10 (Very satisfied)",
-    y = "Number of respondents who responded to all predictors"
+    y = "# respondents who responded to all predictors"
+  ) + 
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank()
   )
 
+ggsave(filename = "data_description_response_summary.png", width = 6, height = 4)
 
-# Tables
+
+# Table 1. Summary of predictors used in preliminary linear model ----
 
 # Numeric Table
 numeric_table <- cleaned_data |>
@@ -54,19 +60,18 @@ numeric_table <- cleaned_data |>
     skipped = sum(1*is.na(value)),
     total = n(),
     num_skipped = paste0(skipped, " / ", total),
-    avg = round(mean(value, na.rm = TRUE), 1)
+    avg = round(mean(value, na.rm = TRUE), 1),
+    median = median(value, na.rm = TRUE)
   ) |>
   mutate(
-    description = dict[predictor]
+    description = dict[predictor], type = general_classes[predictor], distribution = "-", avg_metric = ifelse(type == "Ord", median, avg)
   ) |>
-  select(predictor, avg, description, range, stdev, skewness, num_skipped) |>
-  mutate(type = "Numeric", distribution = "-") |>
   select(
     "Predictor Code" = predictor,
     "Predictor Description" = description,
     "Type" = type,
     "Possible Values (Range)" = range,
-    "Mean/Mode" = avg,
+    "Mean/Median/Mode" = avg_metric,
     "Stdev" = stdev,
     "Skewness" = skewness,
     "Distribution (% of answered)" = distribution, 
@@ -100,7 +105,7 @@ categorical_table <- categorical_long |>
   left_join(level_summary, by = "predictor") |> 
   mutate(
     description = dict[predictor],
-    type        = "Categorical",
+    type        = "Cat",
     num_skipped = paste0(skipped, " / ", total),
   ) |>
   mutate(stdev = "-", skewness = "-", range = paste0(n_levels, " levels")) |>
@@ -109,7 +114,7 @@ categorical_table <- categorical_long |>
     "Predictor Description" = description, 
     "Type" = type,
     "Possible Values (Range)" = range,
-    "Mean/Mode" = mode,
+    "Mean/Median/Mode" = mode,
     "Stdev" = stdev,
     "Skewness" = skewness,
     "Distribution (% of answered)" = distribution, 
@@ -117,3 +122,7 @@ categorical_table <- categorical_long |>
   )
 
 predictor_table <- rbind(numeric_table, categorical_table)
+
+write.table(predictor_table, file = "data_description_predictor_table.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+rm(categorical_table, categorical_long, numeric_table, level_summary)
