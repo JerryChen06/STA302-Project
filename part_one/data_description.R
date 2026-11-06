@@ -14,23 +14,10 @@ relevant_predictors <- c(
   "INCDGHH",
   "EDDVH3",
   "FSCDVHF2",
-  "DHH_SEX",
-  "HWTDGBCC"
+  "DHH_SEX"
 )
 
-# Entire
-ggplot(cleaned_data, aes(x = LSM_01)) + 
-  geom_bar(stat = "count") + 
-  theme_minimal() + 
-  scale_x_continuous(
-    breaks = 0:10
-  ) +
-  labs(
-    x = "General Life Satisfaction: 0 (Very dissatisfied) to 10 (Very satisfied)",
-    y = "Number of respondents who answered the question"
-  )
-
-# Subset
+# Subsetting data to just predictors and filtering out skipped values
 subsetted_df <- cleaned_data |>
   select(
     LSM_01, 
@@ -51,7 +38,6 @@ ggplot(subsetted_df, aes(x = LSM_01)) +
 
 
 # Tables
-
 
 # Numeric Table
 numeric_table <- cleaned_data |>
@@ -130,8 +116,4 @@ categorical_table <- categorical_long |>
     "# Skipped" = num_skipped
   )
 
-
 predictor_table <- rbind(numeric_table, categorical_table)
-
-# Prints the table as LaTeX cuz I'm lazy and don't feel like writing it LMAO
-kable(predictor_table, format = "latex")

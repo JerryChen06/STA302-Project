@@ -247,7 +247,7 @@ dict <- c(
   "DORHC" = "Regular health care provider - Inclusion Flag (F)", # page 6
   "RHC_05" = "Regular health care provider", # page 6
   "DOLMAM" = "Labour market activities - Inclusion Flag - (F)", # page 6
-  "LBFDGHPW" = "Total usual hours worked per week", # page 6
+  "LBFDGHPW" = "Hours worked per week (typical)", # page 6
   "LBFDVPFT" = "Full-time/part-time working status (for total usual hours) - (D)", # page 6
   "LBFDGWSS" = "Working status last week (G)", # page 6
   "SDCDGIMM" = "Immigigrant flag - (D, G)", # page 6
