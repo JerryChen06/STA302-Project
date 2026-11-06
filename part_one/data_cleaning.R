@@ -298,7 +298,7 @@ classes <- c(
   "MAC_05" = "YN 6 9", # page 3
   "DOGEN" = "NA", # page 3
   "GEN_01" = "Ord 9", # page 3
-  "GEN_05" = "Ord 9", # page 3
+  "GEN_05" = "Cat 9", # page 3. Perceived mental health. Techically Ord. Cat., but we're adjusting it to become categorical for our research question
   "GEN_10" = "Ord 9", # page 3
   "GEN_15" = "Ord 6 9", # page 3
   "GEN_20" = "Ord 9", # page 3
@@ -547,6 +547,7 @@ non_NA <- names(classes)[classes != "NA"]
 
 # Named list defining the coding for each categorical predictor
 categorical_codes <- list(
+  "GEN_05" = c("1" = "Good", "2" = "Good", "3" = "Good", "4" = "Not Good", "5" = "Not Good"),
   "COLMODE" = NULL,
   "COLMODEY" = NULL, 
   "COLMODEP" = NULL, 
@@ -616,8 +617,17 @@ cleaned_data <- lapply(non_NA, FUN = function(column) {
 
   # If categorical with ordering, or numeric, then just return the same vector
   if (root_class %in% c("Ord", "Num")) {
-    # Setting other skips as the mean (mean imputation)
-    cleaned_vector[cleaned_vector %in% skipped_options] <- mean(cleaned_vector, na.rm = TRUE)
+
+    if (root_class == "Num") {
+      # Setting other skips as the mean (mean imputation)
+      cleaned_vector[cleaned_vector %in% skipped_options] <- mean(cleaned_vector[!cleaned_vector %in% skipped_options], na.rm = TRUE)
+
+      # Median imputation
+      # cleaned_vector[cleaned_vector %in% skipped_options] <- median(cleaned_vector[!cleaned_vector %in% skipped_options], na.rm = TRUE)
+    } else {
+      # Setting other skips as the mode (mode imputation). Even though it's numeric, the mean may not be a valid response.
+      cleaned_vector[cleaned_vector %in% skipped_options] <- as.numeric(names(which.max(table(cleaned_vector[!is.na(cleaned_vector)]))))
+    }
 
     return(cleaned_vector)
   }
@@ -651,11 +661,3 @@ numeric_classes <- names(general_classes)[general_classes %in% c("Ord", "Num")]
 
 # Classes that are factored
 factored_classes <- names(general_classes)[general_classes %in% c("Cat", "YN", "YNC", "YNDK")]
-
-
-num_responses <- sort(sapply(colnames(cleaned_data), FUN = function(column) {
-
-  num_not_na <- sum(!is.na(cleaned_data[[column]]))
-}), decreasing = TRUE)
-
-names(num_responses) <- dict[names(num_responses)]
