@@ -1,0 +1,11 @@
+Predictor Code	Predictor Description	Type	Possible Values (Range)	Mean/Median/Mode	Stdev	Skewness	Distribution (% of answered)	# Skipped
+FSCDVHF2	Household food security status	Ord	0 - 3	0	0.8	2.4	-	0 / 67079
+GEN_01	Perceived health	Ord	1 - 5	2	1	0.4	-	0 / 67079
+GEN_10	Perceived life stress	Ord	1 - 5	3	1	0	-	0 / 67079
+INCDGHH	Total Household Income	Ord	1 - 5	5	1.2	-1	-	0 / 67079
+LBFDGHPW	Hours worked per week (typical)	Num	0 - 50	37.3	9.4	-1.4	-	37128 / 67079
+PAADVVOL	Volume of weekly activity	Num	0 - 30240	1493.7	2217.4	4	-	65232 / 67079
+PAA_15A	Hours spent on active transportation per week	Num	0 - 84	2.6	5.8	5.4	-	65232 / 67079
+DHH_SEX	Sex at birth	Cat	2 levels	Female	-	-	Female 54%, Male 46%	0 / 67079
+EDDVH3	Highest level of education in household	Cat	3 levels	Post-secondary	-	-	Post-secondary 75%, Secondary, no post-secondary 18%, Less than secondary 7%	0 / 67079
+GEN_05	Perceived mental health	Cat	2 levels	Good	-	-	Good 86%, Not Good 14%	0 / 67079
