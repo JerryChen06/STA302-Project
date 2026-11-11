@@ -107,12 +107,12 @@ png(filename = "fix-assumptions/resid-fitted-qq-boxcox.png", width = 6, height =
 par(mfrow = c(1, 2))
 
 # เปลี่ยน
-plot(skew_corrected_model, which = 1, caption = "A) Residuals vs Fitted", id.n = 0, pch = 16, col = rgb(0, 0, 0, 0.3),
+plot(boxcox_model, which = 1, caption = "A) Residuals vs Fitted", id.n = 0, pch = 16, col = rgb(0, 0, 0, 0.3),
      )
 abline(h = 0, lty = 2, col = "grey40")        # y = 0 line
 
 # เปลี่ยน
-plot(skew_corrected_model, which = 2, caption = c("", "B) Normal QQ Plot"), qqline = FALSE, id.n = 0)
+plot(boxcox_model, which = 2, caption = c("", "B) Normal QQ Plot"), qqline = FALSE, id.n = 0)
 abline(a = 0, b = 1, lty = 2, col = "grey40") # y = x line
 dev.off()
 # resid and preds
@@ -256,6 +256,22 @@ model_data$PAA_15A <- log1p(model_data$PAA_15A)
 model_data$LBFDGHPW <- log(c_val - (model_data$LBFDGHPW))
 
 skew_corrected_model <- lm(
+formula = LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+data = model_data
+)
+
+# # dropping outliers. this made the model worse so i will not drop them lol
+# # i decided that these were unrealistic
+# model_data <- model_data[which(model_data$PAADVVOL <= 25000), ]
+# model_data <- model_data[which(model_data$PAA_15A <= 80), ]
+
+# fitting boxcox on Y
+model_data$LSM_01 <- model_data$LSM_01 + 1 # so that there are no more 0's
+library(car)
+p <- powerTransform(model_data$LSM_01)
+
+model_data$LSM_01 <- (model_data$LSM_01)**2
+boxcox_model <- lm(
 formula = LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
 data = model_data
 )
