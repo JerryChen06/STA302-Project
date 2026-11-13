@@ -1,0 +1,177 @@
+---
+title: "STA302: Predictor Partial F-Tests"
+output: html_document
+date: "2026-11-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+```{r load-data}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(car)
+library(lmtest)
+
+
+cleaned_data <- read_csv("~/Downloads/cleaned_cchs.csv")
+
+relevant_predictors <- c(
+  "PAADVVOL", "PAA_15A", "LBFDGHPW", "GEN_05", "GEN_01",
+  "GEN_10", "INCDGHH", "EDDVH3", "FSCDVHF2", "DHH_SEX"
+)
+
+model_data <- cleaned_data |>
+  select(LSM_01, all_of(relevant_predictors)) |>
+  drop_na()
+```
+
+
+Compare two baseline models:
+ Reduced Model: Predicts self-reported life satisfaction (`LSM_01`) using main effects only.
+ Full Model: Adds an interaction term between physical activity volume (`PAADVVOL`) and perceived mental health (`GEN_05`) to test whether the effect of physical activity depends on mental health status.
+
+```{r initial-models}
+# Fit Reduced Model 
+model_reduced <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = model_data
+)
+
+# Fit Full Model 
+model_full <- lm(
+  LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = model_data
+)
+
+# Partial F Test comparing the interaction term
+anova(model_reduced, model_full)
+```
+
+The partial F test produces a high p-value (close to 1), indicating that the interaction term does not significantly improve model fit. 
+
+
+```{r initial-diagnostics}
+vif(model_full, type = "predictor")
+
+par(mfrow = c(2, 2))
+plot(model_full, main = "Full Model Diagnostics")
+par(mfrow = c(1, 1))
+```
+ Multicollinearity: Adjusted GVIF values are all below 2, indicating no multicollinearity issues.
+
+
+
+Dropping (`PAADVVOL:GEN_05`)
+
+```{r step-0}
+model_no_interaction <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = model_data
+)
+
+drop1(model_no_interaction, test = "F")
+```
+`EDDVH3` has the highest p-value ($p = 0.4933$) and is removed next.
+
+Remove `EDDVH3`
+
+```{r step-1}
+model_step1 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + FSCDVHF2 + DHH_SEX,
+  data = model_data
+)
+
+drop1(model_step1, test = "F")
+```
+ `INCDGHH` has the highest p-value ($p = 0.4353$) and is removed next.
+
+Remove `INCDGHH`
+
+```{r step-2}
+model_step2 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    FSCDVHF2 + DHH_SEX,
+  data = model_data
+)
+
+drop1(model_step2, test = "F")
+```
+ `LBFDGHPW` has the highest p-value ($p = 0.3285$) and is removed next.
+
+Remove `LBFDGHPW`
+
+```{r step-3}
+model_step3 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + GEN_01 + GEN_10 + 
+    FSCDVHF2 + DHH_SEX,
+  data = model_data
+)
+
+drop1(model_step3, test = "F")
+```
+ `FSCDVHF2` has the highest p-value ($p = 0.2045$) and is removed next.
+
+ Remove `FSCDVHF2`
+
+```{r step-4}
+model_step4 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + GEN_01 + GEN_10 + DHH_SEX,
+  data = model_data
+)
+
+drop1(model_step4, test = "F")
+```
+`DHH_SEX` has the highest p-value ($p = 0.1235$) and is removed next.
+
+ Remove `DHH_SEX`
+
+```{r step-5}
+model_step5 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + GEN_01 + GEN_10,
+  data = model_data
+)
+
+drop1(model_step5, test = "F")
+```
+`PAA_15A` has the highest p-value ($p = 0.1052$) and is removed next.
+
+ Remove `PAA_15A`
+
+```{r step-6}
+model_step6 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + GEN_01 + GEN_10,
+  data = model_data
+)
+
+drop1(model_step6, test = "F")
+```
+ All remaining predictors (`PAADVVOL`, `GEN_05`, `GEN_01`, and `GEN_10`) have $p < 0.05$. 
+
+
+Resulting Model
+
+```{r final-model}
+final_model <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + GEN_01 + GEN_10,
+  data = model_data
+)
+
+# 1. Multicollinearity (VIF)
+vif(final_model)
+
+# 2. Residual Diagnostic Plots
+par(mfrow = c(2, 2))
+plot(final_model, main = "Final Model Diagnostics")
+par(mfrow = c(1, 1))
+
+# 3. Coefficient Summary
+coeftest(final_model, vcov = hccm(final_model, type = "hc3"))
+```
