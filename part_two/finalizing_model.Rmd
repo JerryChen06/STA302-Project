@@ -1,0 +1,338 @@
+```{r Original Model}
+source("preliminary_results.R", echo = FALSE)
+```
+
+We first seeked to fix model assumptions. Log (ln(x+1)) transform was conducted on right skewed data, and log transform was conducted on the LBFDGHPW (hours worked per week), shifted by 
+
+```{r}
+# handing skewness of the numerical predictors
+transformed_model <- model_data |> select(LSM_01, all_of(relevant_predictors))
+
+# fitting new model with transformed preds.
+# PAADVVOL, PAA_15A is right skewed
+# LBFDGHPW is left skewed
+c_val <- max(transformed_model$LBFDGHPW) + 1 # for log(c-x) transformation to handel left skew
+transformed_model$PAADVVOL <- log1p(transformed_model$PAADVVOL)
+transformed_model$PAA_15A <- log1p(transformed_model$PAA_15A)
+transformed_model$LBFDGHPW <- log(c_val - (transformed_model$LBFDGHPW))
+
+skew_corrected_model <- lm(
+  formula = LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = transformed_model
+)
+
+generate_plots(skew_corrected_model, relevant_predictors, output_dir = "transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes))
+
+generate_plots(model, relevant_predictors, output_dir = "original_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes))
+
+```
+
+This seemed to correct the skews of the predictors well. However, the evidence of model assumption violations were still present. Next, the response (Life Satisfaction) was transformed using BoxCox transformation. A lambda value of around 2 was found, and thus a square transform was conducted. Normality was largely corrected and linearity left intact, but heteroskedasticity was still present. 
+
+Dropping outliers did not improve the model. 
+
+```{r}
+# transformed_model <- transformed_model[which(transformed_model$PAADVVOL <= 25000), ]
+# transformed_model <- transformed_model[which(transformed_model$PAA_15A <= 80), ]
+
+# fitting boxcox on Y + 1 (avoids negative values)
+library(car)
+p <- powerTransform(model_data$LSM_01 + 1)
+
+transformed_model$LSM_01 <- (model_data$LSM_01 + 1)^2
+
+boxcox_model <- lm(
+  formula = LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = transformed_model
+)
+
+generate_plots(boxcox_model, relevant_predictors, output_dir = "transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes))
+```
+
+Next, we wanted to remove predictors to improve our model fit. We first compared two baseline models: 
+- Reduced Model: Predicts self-reported life satisfaction (`LSM_01`) using main effects only.
+- Full Model: Adds an interaction term between physical activity volume (`PAADVVOL`) and perceived mental health (`GEN_05`) to test whether the effect of physical activity depends on mental health status.
+
+```{r initial-models}
+# Fit Reduced Model 
+model_reduced <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = transformed_model
+)
+
+# Fit Full Model 
+model_full <- lm(
+  LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = transformed_model
+)
+
+# Partial F Test comparing the interaction term
+anova(model_reduced, model_full)
+```
+
+The partial F test produces a high p-value (close to 1), indicating that the interaction term does not significantly improve model fit. 
+
+Next, forward selection was conducted to remove non-significant predictors sequentially. 
+
+```{r initial-diagnostics}
+vif(model_full, type = "predictor")
+
+par(mfrow = c(2, 2))
+plot(model_full, main = "Full Model Diagnostics")
+par(mfrow = c(1, 1))
+```
+ Multicollinearity: Adjusted GVIF values are all below 2, indicating no multicollinearity issues.
+
+Dropping (`PAADVVOL:GEN_05`)
+
+```{r step-0}
+model_no_interaction <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = transformed_model
+)
+
+drop1(model_no_interaction, test = "F")
+```
+`EDDVH3` has the highest p-value ($p = 0.4933$) and is removed next.
+
+Remove `EDDVH3`
+
+```{r step-1}
+model_step1 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + FSCDVHF2 + DHH_SEX,
+  data = transformed_model
+)
+
+drop1(model_step1, test = "F")
+```
+ `INCDGHH` has the highest p-value ($p = 0.4353$) and is removed next.
+
+Remove `INCDGHH`
+
+```{r step-2}
+model_step2 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    FSCDVHF2 + DHH_SEX,
+  data = transformed_model
+)
+
+drop1(model_step2, test = "F")
+```
+ `LBFDGHPW` has the highest p-value ($p = 0.3285$) and is removed next.
+
+Remove `LBFDGHPW`
+
+```{r step-3}
+model_step3 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + GEN_01 + GEN_10 + 
+    FSCDVHF2 + DHH_SEX,
+  data = transformed_model
+)
+
+drop1(model_step3, test = "F")
+```
+ `FSCDVHF2` has the highest p-value ($p = 0.2045$) and is removed next.
+
+ Remove `FSCDVHF2`
+
+```{r step-4}
+model_step4 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + GEN_01 + GEN_10 + DHH_SEX,
+  data = transformed_model
+)
+
+drop1(model_step4, test = "F")
+```
+`DHH_SEX` has the highest p-value ($p = 0.1235$) and is removed next.
+
+ Remove `DHH_SEX`
+
+```{r step-5}
+model_step5 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + PAA_15A + GEN_01 + GEN_10,
+  data = transformed_model
+)
+
+drop1(model_step5, test = "F")
+```
+`PAA_15A` has the highest p-value ($p = 0.1052$) and is removed next.
+
+ Remove `PAA_15A`
+
+```{r step-6}
+model_step6 <- lm(
+  LSM_01 ~ PAADVVOL + GEN_05 + GEN_01 + GEN_10,
+  data = transformed_model
+)
+
+drop1(model_step6, test = "F")
+```
+ All remaining predictors (`PAADVVOL`, `GEN_05`, `GEN_01`, and `GEN_10`) have $p < 0.05$. 
+
+
+Resulting subsetted model. Despite the interaction term not being significant, it was kept since it address our research question. 
+
+```{r final-model}
+new_relevant_predictors <- c("PAADVVOL", "GEN_05", "GEN_01", "GEN_10", "PAADVVOL:GEN_05")
+
+subsetted_model <- lm(
+  formula = reformulate(new_relevant_predictors, response = "LSM_01"),
+  data = transformed_model
+)
+
+# 1. Multicollinearity (VIF)
+vif(subsetted_model)
+
+# 2. Residual Diagnostic Plots
+par(mfrow = c(2, 2))
+plot(subsetted_model, main = "Final Model Diagnostics")
+par(mfrow = c(1, 1))
+
+# 3. Coefficient Summary
+coeftest(subsetted_model, vcov = hccm(subsetted_model, type = "hc3"))
+```
+
+To think about which predictors to add, we will first identify problematic points. The pattern of these points may highlight a missing predictor in our model. 
+
+```{r identifying-problematic-points}
+p <- length(coef(subsetted_model)) - 1 # Number of predictors
+n <- nobs(subsetted_model) # Number of observations
+
+# Outliers
+ri <- rstandard(subsetted_model)
+
+outliers_indices <- which(abs(ri) > 4)
+
+# Leverage points
+hii <- hatvalues(subsetted_model)
+
+leverage_point_indices <- which(hii > 2*(p+1)/n)
+
+# Influential Points: Cooks distance 
+cooks_distances <- cooks.distance(subsetted_model)
+
+cooks_problematic_point_indices <- which(cooks_distances > qf(0.5, p + 1, n - p - 1))
+
+# Influential Points: DFFITS
+dffits <- dffits(subsetted_model)
+
+dffits_problematic_point_indices <- which(abs(dffits) > 2*sqrt((p+1) / n))
+
+# Influential Points: DFBETAS
+dfbetas <- dfbetas(subsetted_model)
+num_bad_betas <- rowSums(1*(abs(dfbetas) > 2 / sqrt(n)))
+
+cat("Num outliers:", length(outliers_indices), "\n")
+cat("Num leverage points:", length(leverage_point_indices), "\n\n")
+cat("Number of problematic points determined using:\n")
+cat("Cooks:", length(cooks_problematic_point_indices), "\n")
+cat("DFFITS:", length(dffits_problematic_point_indices), "\n")
+cat("DFBETAS:", sum(1*(num_bad_betas > 0)), "\n")
+```
+
+I will be trying to reduce the number of DFFITS points. I will test the addition of every possible predictor, and read three specific outputs: 
+1. How much the adjusted R2 value increases
+2. How much the residuals of each problematic point drops
+3. How much the residuals of each non-problematic point drops. 
+
+We want predictors where all three hold:
+- R2 value remains constant or increases
+- residuals of each problematic point drops significantly
+- residuals of non-problematic points don't get higher. 
+
+```{r testing-every-new-predictor}
+current_predictors <- attr(terms(subsetted_model), "term.labels")
+candidate_predictors <- setdiff(non_NA, c(current_predictors, "LSM_01"))
+
+temp_model_data <- cleaned_data |>
+  drop_na(any_of(c(current_predictors, "LSM_01")))
+
+c_val_temp <- max(temp_model_data$LBFDGHPW, na.rm = TRUE) + 1
+temp_model_data$LSM_01   <- (temp_model_data$LSM_01 + 1)^2
+temp_model_data$PAADVVOL <- log1p(temp_model_data$PAADVVOL)
+temp_model_data$PAA_15A  <- log1p(temp_model_data$PAA_15A)
+temp_model_data$LBFDGHPW <- log(c_val_temp - temp_model_data$LBFDGHPW)
+
+# Problematic points in a model: flagged by DFFITS or an outlier (|r_i| > 4)
+problematic_points <- function(m) {
+  n_m <- nobs(m)
+  p_m <- length(coef(m)) - 1
+  abs(dffits(m)) > 2 * sqrt((p_m + 1) / n_m) | abs(rstandard(m)) > 4
+}
+
+candidate_results <- lapply(candidate_predictors, FUN = function(pred) {
+
+  relevant_model_data <- temp_model_data |>
+    drop_na(any_of(pred))
+
+  if (nrow(relevant_model_data) < 1000) return(NULL)
+
+  # Current model and current model + candidate, fitted on the same rows
+  og_model <- lm(reformulate(current_predictors, response = "LSM_01"), data = relevant_model_data)
+  model <- tryCatch(
+    lm(reformulate(c(current_predictors, pred), response = "LSM_01"), data = relevant_model_data),
+    error = function(e) NULL
+  )
+  if (is.null(model) || nobs(model) != nobs(og_model)) return(NULL)
+
+  flagged <- problematic_points(og_model) # problematic before adding the candidate
+  e_old <- abs(resid(og_model)) # how far off each prediction was
+  e_new <- abs(resid(model)) # how far off it is with the candidate added
+
+  tibble(
+    predictor = pred,
+    description = dict[[pred]],
+    n = nobs(model),
+    n_flagged = sum(flagged),
+    gain_in_adj_r2 = summary(model)$adj.r.squared - summary(og_model)$adj.r.squared,
+    
+    # % reduction in average |residual|, for flagged points 
+    pct_resid_drop_flagged = 100 * (1 - mean(e_new[flagged])  / mean(e_old[flagged])),
+
+    # % reduction in average |residual| for all other points
+    pct_resid_drop_others  = 100 * (1 - mean(e_new[!flagged]) / mean(e_old[!flagged]))
+  )
+
+}) |>
+  bind_rows() |>
+  arrange(desc(pct_resid_drop_flagged))
+
+candidate_results
+
+```
+
+From this analysis, the following predictors seemed promising (increased adjR2, decreased avg residual of problematic points by at least 1%, and also decreased avg residuals of other points):
+- SLP_015 (Frequency of refreshing sleep)
+- GEN_20 (sense of belonging to local community)
+- COV2_005 (Self-perceived mental health before / after the pandemic)
+- DHHDGHSZ (Yes = Lives alone, No = Lives with others)
+- SBE_005 (Free time sitting/lying watching screen school/work day) (1200 observations remaining)
+- SLP_010 (Trouble going to sleep or staying asleep)
+
+I'll try to add the predictors of all of these except for SBE_005 since it reduces the number of observations greatly. 
+
+```{r fitting-new-model}
+new_added_predictors <- c(new_relevant_predictors, "SLP_015", "GEN_20", "COV2_005", "DHHDGHSZ", "SLP_010")
+
+new_model_data <- cleaned_data |>
+  select(any_of(c("LSM_01", new_added_predictors)))
+
+formula <- reformulate(c(new_added_predictors, "PAADVVOL:GEN_05"), response = "LSM_01")
+
+new_model <- lm(
+  formula = formula,
+  data = new_model_data
+)
+
+summary(new_model)
+```
+
+Off the bat, this added quite a few predictors that were significant. Keep in mind this does not include transformed variables, so model assumptions will need to be re-assessed. 
+
+In particular, living alone, perceived mental health before vs after pandemic, sense of belonging to local community, and frequency of refreshing sleep came up as significant predictors.
+
+However, the original metrics PAADVVOL (physical activity) and the interaction term with GEN_05 were still not significant. This may change after correcting model assumptions. It may also be worth looking if switching out PAADVVOL with PAA_15A would make a difference. 
