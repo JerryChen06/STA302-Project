@@ -12,18 +12,18 @@ transformed_model <- model_data |> select(LSM_01, all_of(relevant_predictors))
 # PAADVVOL, PAA_15A is right skewed
 # LBFDGHPW is left skewed
 c_val <- max(transformed_model$LBFDGHPW) + 1 # for log(c-x) transformation to handel left skew
-transformed_model$PAADVVOL <- log1p(transformed_model$PAADVVOL)
-transformed_model$PAA_15A <- log1p(transformed_model$PAA_15A)
-transformed_model$LBFDGHPW <- log(c_val - (transformed_model$LBFDGHPW))
+transformed_model$PAADVVOL <- log1p(model_data$PAADVVOL)
+transformed_model$PAA_15A <- log1p(model_data$PAA_15A)
+transformed_model$LBFDGHPW <- log(c_val - (model_data$LBFDGHPW))
 
 skew_corrected_model <- lm(
   formula = LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
   data = transformed_model
 )
 
-generate_plots(skew_corrected_model, relevant_predictors, output_dir = "transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes))
+generate_plots(skew_corrected_model, relevant_predictors, output_dir = "figures/transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = transformed_model)
 
-generate_plots(model, relevant_predictors, output_dir = "original_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes))
+generate_plots(model, relevant_predictors, output_dir = "figures/original_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = model_data)
 
 ```
 
@@ -46,7 +46,7 @@ boxcox_model <- lm(
   data = transformed_model
 )
 
-generate_plots(boxcox_model, relevant_predictors, output_dir = "transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes))
+generate_plots(boxcox_model, relevant_predictors, output_dir = "figures/transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = transformed_model)
 ```
 
 Next, we wanted to remove predictors to improve our model fit. We first compared two baseline models: 
@@ -336,3 +336,35 @@ Off the bat, this added quite a few predictors that were significant. Keep in mi
 In particular, living alone, perceived mental health before vs after pandemic, sense of belonging to local community, and frequency of refreshing sleep came up as significant predictors.
 
 However, the original metrics PAADVVOL (physical activity) and the interaction term with GEN_05 were still not significant. This may change after correcting model assumptions. It may also be worth looking if switching out PAADVVOL with PAA_15A would make a difference. 
+
+Now, we will check assumptions again.
+
+```{r visualizing-assumptions}
+generate_plots(new_model, relevant_predictors = new_added_predictors[!grepl(":", new_added_predictors)], output_dir = "figures/new_model", pairwise_predictors = intersect(new_added_predictors, numeric_classes), model_data = new_model_data)
+```
+
+This shows violation of normality. Thus, Boxcox will be performed on the response in the same way as above. The right-skew for PAADVVOL will also be corrected in the same way as above. All other predictors are discrete in nature and so they will not be skew-corrected. 
+
+```{r}
+new_transformed_data <- new_model_data
+
+# Correcting right-skew
+new_transformed_data$PAADVVOL <- log1p(new_model_data$PAADVVOL)
+
+# fitting boxcox on Y + 1 (avoids negative values)
+library(car)
+p <- powerTransform(new_model_data$LSM_01 + 1)
+
+new_transformed_data$LSM_01 <- (new_model_data$LSM_01 + 1)^2
+
+formula <- reformulate(c(new_added_predictors, "PAADVVOL:GEN_05"), response = "LSM_01")
+
+new_boxcox_model <- lm(
+  formula = formula,
+  data = new_transformed_data
+)
+
+generate_plots(new_boxcox_model, relevant_predictors = new_added_predictors[!grepl(":", new_added_predictors)], output_dir = "figures/new_transformed_model", pairwise_predictors = intersect(new_added_predictors, numeric_classes), model_data = new_transformed_data)
+```
+
+This fixed normality, and variance seems to be relatively constant. Assumptions seem to hold well. 
