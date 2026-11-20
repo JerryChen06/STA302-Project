@@ -368,3 +368,39 @@ generate_plots(new_boxcox_model, relevant_predictors = new_added_predictors[!gre
 ```
 
 This fixed normality, and variance seems to be relatively constant. Assumptions seem to hold well. 
+
+
+Second round of predictor removal, keeping the interaction term PAADVVOL * GEN_05 as it is crititcal to our study.
+
+```{r}
+drop1(new_boxcox_model, test = "F")
+```
+
+```{r}
+# model without SLP_010
+new_boxcox_step1 <- lm(
+  LSM_01 ~ PAADVVOL * GEN_05 + GEN_01 + GEN_10 + SLP_015 + GEN_20 + COV2_005 + DHHDGHSZ,
+  data = new_transformed_data
+)
+
+# verifying remaining predictors
+drop1(new_boxcox_step1, test = "F")
+```
+
+```{r}
+final_boxcox_model <- lm(
+  LSM_01 ~ PAADVVOL * GEN_05 + GEN_01 + GEN_10 + SLP_015 + GEN_20 + COV2_005 + DHHDGHSZ,
+  data = new_transformed_data
+)
+
+# Multicollinearity check
+vif(final_boxcox_model, type = "predictor")
+
+# Residual plots
+par(mfrow = c(2, 2))
+plot(final_boxcox_model, main = "Final Transformed Model Diagnostics")
+par(mfrow = c(1, 1))
+
+# Coefficient table with robust standard errors
+coeftest(final_boxcox_model, vcov = hccm(final_boxcox_model, type = "hc3"))
+```
