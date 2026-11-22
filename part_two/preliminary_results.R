@@ -2,7 +2,7 @@
 #' <subsetted_df> Cleaned data subsetted to just relevant_predictors. Filtered out all rows with a missing value. 
 #' <numeric_classes> Vector of the codes of all ord. cat. and numeric variables
 #' <factored_classes> Vector of the codes of all categorical variables that are factored in the data (includes all Y/N variables)
-source("data_description.R", echo = FALSE)
+source("part_two/data_description.R", echo = FALSE)
 
 # Fitting the model
 model <- lm(
