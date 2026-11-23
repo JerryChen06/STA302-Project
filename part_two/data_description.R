@@ -1,7 +1,7 @@
 library(moments)
 library(knitr)
 
-source("data_cleaning.R", echo = FALSE)
+source("part_two/data_cleaning.R", echo = FALSE)
 
 # Figure 1. Histogram of all valid “general life satisfaction” responses ----
 relevant_predictors <- c(

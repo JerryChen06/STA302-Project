@@ -1,5 +1,5 @@
 ```{r Original Model}
-source("preliminary_results.R", echo = FALSE)
+source("part_two/preliminary_results.R", echo = FALSE)
 ```
 
 We first seeked to fix model assumptions. Log (ln(x+1)) transform was conducted on right skewed data, and log transform was conducted on the LBFDGHPW (hours worked per week), shifted by 
@@ -21,15 +21,13 @@ skew_corrected_model <- lm(
   data = transformed_model
 )
 
-generate_plots(skew_corrected_model, relevant_predictors, output_dir = "figures/transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = transformed_model)
+generate_plots(skew_corrected_model, relevant_predictors, output_dir = "part_two/figures/transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = transformed_model)
 
-generate_plots(model, relevant_predictors, output_dir = "figures/original_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = model_data)
+generate_plots(model, relevant_predictors, output_dir = "part_two/figures/original_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = model_data)
 
 ```
 
 This seemed to correct the skews of the predictors well. However, the evidence of model assumption violations were still present. Next, the response (Life Satisfaction) was transformed using BoxCox transformation. A lambda value of around 2 was found, and thus a square transform was conducted. Normality was largely corrected and linearity left intact, but heteroskedasticity was still present. 
-
-Dropping outliers did not improve the model. 
 
 ```{r}
 # transformed_model <- transformed_model[which(transformed_model$PAADVVOL <= 25000), ]
@@ -46,8 +44,50 @@ boxcox_model <- lm(
   data = transformed_model
 )
 
-generate_plots(boxcox_model, relevant_predictors, output_dir = "figures/transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = transformed_model)
+generate_plots(boxcox_model, relevant_predictors, output_dir = "part_two/figures/transformed_model", pairwise_predictors = intersect(relevant_predictors, numeric_classes), model_data = transformed_model)
 ```
+From pairwise predictor plots, it can be seen that there is a fanning pattern between PAADVVOL and PAA_15A. Drop PAA_15A (since it does not really capture a person being active) and see how the plots look like.
+```{r trying to remove PAA_15A}
+# have to redefine relevent predictors to make plots
+relevant_predictors_no_PAA_15A <- c(
+  "PAADVVOL",
+  "LBFDGHPW",
+  "GEN_05",
+  "GEN_01",
+  "GEN_10",
+  "INCDGHH",
+  "EDDVH3",
+  "FSCDVHF2",
+  "DHH_SEX"
+)
+model_no_PAA_15A <- lm(
+  formula = LSM_01 ~ PAADVVOL * GEN_05 + LBFDGHPW + GEN_01 + GEN_10 + INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = model_data
+)
+generate_plots(model_no_PAA_15A, relevant_predictors_no_PAA_15A, output_dir = "part_two/figures/original_model_no_PAA_15A", pairwise_predictors = intersect(relevant_predictors_no_PAA_15A, numeric_classes), model_data = model_data)
+```
+Without transformations, the residual plots look to same. Now I will try to fix boxcox on the predictors instead (goal here is I don't want to transform response because I feel like the interpreting that would be hard)
+```{r boxcox on preds without PAA_15A}
+cont_preds <- c("PAADVVOL", "LBFDGHPW")
+
+model_data_boxcox_preds <- model_data
+model_data_boxcox_preds$PAADVVOL <- model_data_boxcox_preds$PAADVVOL+1
+
+p <- powerTransform(model_data_boxcox_preds[, c("PAADVVOL", "LBFDGHPW")])
+summary(p)
+
+model_data_boxcox_preds$PAADVVOL <- (model_data_boxcox_preds$PAADVVOL_s)^(1/3)
+model_data_boxcox_preds$LBFDGHPW <- (model_data_boxcox_preds$LBFDGHPW_s)^(2.25)
+
+boxcox_model_no_PAA_15A <- lm(
+  formula = LSM_01 ~ PAADVVOL * GEN_05 + LBFDGHPW + GEN_01 + GEN_10 + INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX,
+  data = model_data_boxcox_preds
+)
+
+generate_plots(boxcox_model_no_PAA_15A, relevant_predictors_no_PAA_15A, output_dir = "part_two/figures/transformed_model_no_PAA_15A", pairwise_predictors = intersect(relevant_predictors_no_PAA_15A, numeric_classes), model_data = model_data_boxcox_preds)
+```
+After checking the plots, this didn't do anything. So we decided to keep the old method of fixing assumptions.
+
 
 Next, we wanted to remove predictors to improve our model fit. We first compared two baseline models: 
 - Reduced Model: Predicts self-reported life satisfaction (`LSM_01`) using main effects only.
@@ -74,7 +114,7 @@ anova(model_reduced, model_full)
 
 The partial F test produces a high p-value (close to 1), indicating that the interaction term does not significantly improve model fit. 
 
-Next, forward selection was conducted to remove non-significant predictors sequentially. 
+Next, backward selection was conducted to remove non-significant predictors sequentially. 
 
 ```{r initial-diagnostics}
 vif(model_full, type = "predictor")
@@ -171,12 +211,56 @@ model_step6 <- lm(
 
 drop1(model_step6, test = "F")
 ```
- All remaining predictors (`PAADVVOL`, `GEN_05`, `GEN_01`, and `GEN_10`) have $p < 0.05$. 
+ All remaining predictors (`PAADVVOL`, `GEN_05`, `GEN_01`, and `GEN_10`) have $p < 0.05$.
 
+To further justify our choice of which predictors we decided to drop, we will do an All Possible Subsets of Model Selection method 
+```{r all possible subsets model selection}
+# install.packages("leaps")
+library("leaps")
+best <- regsubsets(LSM_01 ~ PAADVVOL * GEN_05 + PAA_15A + LBFDGHPW + GEN_01 + GEN_10 + 
+    INCDGHH + EDDVH3 + FSCDVHF2 + DHH_SEX, data = transformed_model, nbest = 2, nvmax = 11, really.big = TRUE, method = "exhaustive")
+# nvmax default is 8, really.big is needed above 9 preds
+summary(best)
 
-Resulting subsetted model. Despite the interaction term not being significant, it was kept since it address our research question. 
+#plotting for visualization
+# note: with subsets(best, statistic = "adjr2",legend = FALSE) everything was overlapping and impossible to read
 
+```{r all-possible-subsets-plot, fig.width=14, fig.height=8}
+# create the output folder if it doesn't exist
+out_dir <- "part_two/figures/all_possible_subsets_selection"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+# helper: regsubsets plot with smaller, 30-degree-tilted variable labels
+plot_rs <- function(fit, scale, main, label_cex = 0.7, angle = 30) {
+  labs <- c("(Intercept)", fit$xnames[-1])
+  plot(fit, scale = scale, main = main, labels = rep("", length(labs)))
+  usr <- par("usr")
+  text(x = seq_along(labs),
+       y = usr[3] - 0.02 * (usr[4] - usr[3]),
+       labels = labs, srt = angle, adj = 1, xpd = TRUE, cex = label_cex)
+}
+
+# draw the two panels (wrapped in a function so we can reuse it)
+plot_subsets <- function() {
+  op <- par(mfrow = c(1, 2), mar = c(12, 4, 3, 1), cex.axis = 0.7)
+  on.exit(par(op))
+  plot_rs(best, "adjr2", "Adjusted R²")
+  plot_rs(best, "bic",   "BIC")
+}
+
+# save to file
+png(file.path(out_dir, "all_possible_subsets_selection.png"),
+    width = 14, height = 8, units = "in", res = 300)
+plot_subsets()
+invisible(dev.off())
+
+# also show it in the knitted document
+plot_subsets()
+```
+
+Resulting subsetted model. From backward selection, we have kept predictors with have a significant linear relationship with LSM_01. From the plot after conducting all possible subsets selection, if we look at the BIC, it can be seen that the model with the highest ranking BIC that includes the interaction term PAADVVOL:GEN_05 (we care about this term since it is our research question). Is the model with the same predictors as what we got from backward selection. Therefore these were the models we decided to keep.
 ```{r final-model}
+library(lmtest)
 new_relevant_predictors <- c("PAADVVOL", "GEN_05", "GEN_01", "GEN_10", "PAADVVOL:GEN_05")
 
 subsetted_model <- lm(
@@ -233,6 +317,13 @@ cat("Cooks:", length(cooks_problematic_point_indices), "\n")
 cat("DFFITS:", length(dffits_problematic_point_indices), "\n")
 cat("DFBETAS:", sum(1*(num_bad_betas > 0)), "\n")
 ```
+For visualization, I will plot the standardized residual plots
+```{r standardized residuals of transformed model}
+new_relevant_predictors_for_visualization <- c("PAADVVOL", "GEN_05", "GEN_01", "GEN_10")
+generate_plots(subsetted_model, new_relevant_predictors_for_visualization, output_dir = "part_two/figures/standardized_residuals_transformed_model", pairwise_predictors = intersect(new_relevant_predictors_for_visualization, numeric_classes), model_data = transformed_model, standardized = TRUE)
+# the plots that changed are prelim_results_resid_qq.png and prelim_results_resid_vs_pred.png
+```
+The plots look very similar to the plots made with non-standardized residuals.
 
 I will be trying to reduce the number of DFFITS points. I will test the addition of every possible predictor, and read three specific outputs: 
 1. How much the adjusted R2 value increases
@@ -340,7 +431,7 @@ However, the original metrics PAADVVOL (physical activity) and the interaction t
 Now, we will check assumptions again.
 
 ```{r visualizing-assumptions}
-generate_plots(new_model, relevant_predictors = new_added_predictors[!grepl(":", new_added_predictors)], output_dir = "figures/new_model", pairwise_predictors = intersect(new_added_predictors, numeric_classes), model_data = new_model_data)
+generate_plots(new_model, relevant_predictors = new_added_predictors[!grepl(":", new_added_predictors)], output_dir = "part_two/figures/new_model", pairwise_predictors = intersect(new_added_predictors, numeric_classes), model_data = new_model_data)
 ```
 
 This shows violation of normality. Thus, Boxcox will be performed on the response in the same way as above. The right-skew for PAADVVOL will also be corrected in the same way as above. All other predictors are discrete in nature and so they will not be skew-corrected. 
@@ -364,7 +455,7 @@ new_boxcox_model <- lm(
   data = new_transformed_data
 )
 
-generate_plots(new_boxcox_model, relevant_predictors = new_added_predictors[!grepl(":", new_added_predictors)], output_dir = "figures/new_transformed_model", pairwise_predictors = intersect(new_added_predictors, numeric_classes), model_data = new_transformed_data)
+generate_plots(new_boxcox_model, relevant_predictors = new_added_predictors[!grepl(":", new_added_predictors)], output_dir = "part_two/figures/new_transformed_model", pairwise_predictors = intersect(new_added_predictors, numeric_classes), model_data = new_transformed_data)
 ```
 
 This fixed normality, and variance seems to be relatively constant. Assumptions seem to hold well. 

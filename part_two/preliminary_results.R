@@ -2,7 +2,7 @@
 #' <subsetted_df> Cleaned data subsetted to just relevant_predictors. Filtered out all rows with a missing value. 
 #' <numeric_classes> Vector of the codes of all ord. cat. and numeric variables
 #' <factored_classes> Vector of the codes of all categorical variables that are factored in the data (includes all Y/N variables)
-source("data_description.R", echo = FALSE)
+source("part_two/data_description.R", echo = FALSE)
 
 # Fitting the model
 model <- lm(
@@ -13,14 +13,15 @@ model <- lm(
 # If we ever change our model, this will prevent any discrepencies between documentation and model itself. 
 if (!identical(sort(all.vars(delete.response(terms(model)))), sort(relevant_predictors))) stop("Mismatch between # predictors documented vs in model")
 
-#' Will generate figures 2, 3, and 4 given a fitted linear model. Will also include a table summary of results
-#' 
+#' Will generate figures 2, 3, and 4 given a fitted linear model.
+#'
 #' @param model Linear model of relevant predictors
 #' @param relevant_predictors Documented relavent predictors
 #' @param output_dir The folder to which the figures will be created into
 #' @param pairwise_predictors The predictors to plot in the pred x pred plot. Must be a subset of relevant_predictors
-#' @param model_data
-generate_plots <- function(model, relevant_predictors, output_dir, pairwise_predictors, model_data) {
+#' @param model_data Data used to fit the model
+#' @param standardized If TRUE, the residual plots (figures 2A and 4) use standardized residuals instead of raw residuals. Default FALSE.
+generate_plots <- function(model, relevant_predictors, output_dir, pairwise_predictors, model_data, standardized = FALSE) {
 
   # Just catches if we accidentally don't keep relevant_predictors and pairwise_predictors agreeing with each other. 
   # The long statement just prints the predictors that weren't present in both vectors (there's defo a better way but it works lmao)
@@ -40,14 +41,34 @@ generate_plots <- function(model, relevant_predictors, output_dir, pairwise_pred
                     setdiff(relevant_predictors, model_vars)),
               collapse = ", "))
   }
+
+  # Creates the output directory (including any missing parent folders) if it doesn't already exist
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+
+  # Switches between raw and standardized residuals for figures 2A and 4
+  resid_fun   <- if (standardized) rstandard else resid
+  resid_label <- if (standardized) "Standardized residuals" else "Residuals"
   
   # Figure 2. Residual Plots (Residual vs Fitted and Normal QQ) ----
   png(file.path(output_dir, "prelim_results_resid_qq.png"), width = 1000, height = 400, res = 120)
   par(mfrow = c(1, 3))
 
-  plot(model, which = 1, caption = "A) Residuals vs Fitted", id.n = 0)
+  if (standardized) {
+    # plot.lm(which = 1) only supports raw residuals, so draw this panel manually
+    std_res <- rstandard(model)
+    plot(fitted(model), std_res,
+         main = "A) Standardized Residuals vs Fitted",
+         xlab = "Fitted values", ylab = resid_label,
+         pch = 16, col = rgb(0, 0, 0, 0.25))
+    lines(lowess(fitted(model), std_res), col = "red", lwd = 2)
+    # lowess fits a smooth curve through the scatterplot. So it traces the average standardized residual as a function of the fitted value, without assuming any particular shape.
+    # this func is mainly just for checking non-linearity
+  } else {
+    plot(model, which = 1, caption = "A) Residuals vs Fitted", id.n = 0)
+  }
   abline(h = 0, lty = 2, col = "grey40")        # y = 0 line
 
+  # Note: which = 2 already uses standardized residuals
   plot(model, which = 2, caption = c("", "B) Normal QQ Plot"), qqline = FALSE, id.n = 0)
   abline(a = 0, b = 1, lty = 2, col = "grey40") # y = x line
 
@@ -61,6 +82,7 @@ generate_plots <- function(model, relevant_predictors, output_dir, pairwise_pred
   dev.off()
 
   # Figure 3. Pairwise relationships of each predictor in linear model ----
+  # (doesn't use residuals, so the same regardless of `standardized`)
   png(file.path(output_dir, "prelim_results_pred_pairs.png"), width = 1300, height = 1300, res = 240)
 
   pairs_raw <- model_data |>
@@ -141,7 +163,7 @@ generate_plots <- function(model, relevant_predictors, output_dir, pairwise_pred
   cex_lab = 0.8   # size of axis numbers / category labels
   cex_main = 0.9  # size of titles
   dpi = 150
-  res <- resid(model)
+  res <- resid_fun(model)                     # raw or standardized depending on `standardized`
   mf  <- model.frame(model)                   # only the rows used in the fit
 
   # Classes to use box plot
@@ -169,7 +191,7 @@ generate_plots <- function(model, relevant_predictors, output_dir, pairwise_pred
   line_in <- par("csi")                       # height of one text line, in inches
 
   titles <- lapply(relevant_predictors, function(p)
-    wrap_inches(paste0("Residuals vs ", p, " (", dict[p], ")"), panel_w, cex_main, font = 2))
+    wrap_inches(paste0(resid_label, " vs ", p, " (", dict[p], ")"), panel_w, cex_main, font = 2))
   names(titles) <- relevant_predictors
 
   x_tick_labs <- lapply(relevant_predictors, function(p) {
@@ -199,7 +221,7 @@ generate_plots <- function(model, relevant_predictors, output_dir, pairwise_pred
   # Creating margins for each plot looking at the worst case
   max_title_lines <- max(lengths(titles))
   mai <- c(bottom = max(bottom_needed),
-           left   = 3.2 * line_in,                                        # y numbers + "Residuals"
+           left   = 3.2 * line_in,                                        # y numbers + y-axis label
            top    = (0.6 + max_title_lines * 1.1 * cex_main) * line_in,   # wrapped title
            right  = 0.1) + gap
 
@@ -218,7 +240,7 @@ generate_plots <- function(model, relevant_predictors, output_dir, pairwise_pred
     x <- mf[[p]]
 
     if (is_box(p)) {
-      boxplot(res ~ factor(x), xaxt = "n", xlab = "", ylab = "Residuals", cex.axis = cex_lab)
+      boxplot(res ~ factor(x), xaxt = "n", xlab = "", ylab = resid_label, cex.axis = cex_lab)
       labs <- x_tick_labs[[p]]
       y_in <- grconvertY(par("usr")[3], "user", "inches") - 0.1   # 0.1 in below the plot box
       text(seq_along(labs), grconvertY(y_in, "inches", "user"), labs,
@@ -226,7 +248,7 @@ generate_plots <- function(model, relevant_predictors, output_dir, pairwise_pred
 
     # If the class is numeric, then do simple plot
     } else if (general_classes[p] == "Num") {
-      plot(x, res, xlab = "", ylab = "Residuals", pch = 16,
+      plot(x, res, xlab = "", ylab = resid_label, pch = 16,
            col = rgb(0, 0, 0, 0.3), cex.axis = cex_lab)
       lines(lowess(x, res), col = "red", lwd = 2)
 
