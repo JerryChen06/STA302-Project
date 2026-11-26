@@ -116,7 +116,7 @@ anova(model_reduced, boxcox_model)
 
 The partial F test produces a high p-value (close to 1), indicating that the interaction term does not significantly improve model fit. However, since this interaction term is critical to our research question, it will be kept. To justify our choice of which predictors we decided to drop, we will do an All Possible Subsets of Model Selection method using both adj_R2 and BIC as readouts. 
 
-Note that we will continue using the data subsetted to all original predictors (`r nrow(original_model_data` observations), even when predictors are being removed to maintain consistency. 
+Note that we will continue using the data subsetted to all original predictors (`r nrow(original_model_data)` observations), even when predictors are being removed to maintain consistency. 
 
 ```{r all possible subsets model selection}
 # install.packages("leaps")
@@ -184,7 +184,7 @@ subsetted_model <- lm(
 )
 
 # 1. Multicollinearity (VIF)
-vif(subsetted_model)
+vif(subsetted_model, type = "predictor") # added "type" parameter since we have an interaction term.
 
 # 2. Residual Diagnostic Plots
 par(mfrow = c(2, 2))
@@ -196,6 +196,9 @@ coeftest(subsetted_model, vcov = hccm(subsetted_model, type = "hc3"))
 ```
 
 The same skew-corrections and boxcox transformation procedure will be applied to correct normality. 
+
+Note on interpretting GVIF:
+because we have an interaction term we cant use normal vif (the VIFs change depending on which level we choose as the baseline). Instead, we have to use GVIF which captures the volume of similarity between models. But since its a volume it grows with dimensions so we have to look at GVIF^(1/(2*Df)). to compare it to the cutoff of 5 or 10 we have to square the GVIF^(1/(2*Df)).
 
 ```{r subsetted model: skew correction}
 # handing skewness of the numerical predictors
@@ -384,7 +387,7 @@ However, the following predictors seemed promising (increased adjR2, decreased a
 - GEN_20 (sense of belonging to local community)
 - COV2_005 (Self-perceived mental health before / after the pandemic)
 - DHHDGHSZ (Yes = Lives alone, No = Lives with others)
-- SLP_010
+- SLP_010 (Trouble going to sleep or staying asleep - frequency)
 
 For each of these, we will determine whether we see an improvement to AIC. Here we are using AIC (not BIC from before) since we are not concerned with having a simpler model, as we have already subsetted the predictors greatly and are more confident in our choices. Thus, we will compute AIC for each subset. 
 
@@ -406,6 +409,72 @@ Off the bat, this added quite a few predictors that were significant. Keep in mi
 
 In particular, living alone, perceived mental health before vs after pandemic, sense of belonging to local community, and frequency of refreshing sleep came up as significant predictors.
 
+To see which predictors to keep, we will choose based on 2 factors:
+1. choosing based on residual plots (more from the visualization angle)
+2. all possible subset selection (more on the numeric side)
+
+1.1 Residuals vs. a candidate that isn't in the model
+is there a systematic trend in our residuals to one of the predictors we're considering?
+1.2 Profile the flagged points
+is there a pattern in the problematic points (do they all have something in common what could be a variable we didn't add?)
+
+```{r}
+library(car)
+cand_vars <- c("SLP_015", "GEN_20", "COV2_005", "DHHDGHSZ", "SLP_010")  # the 5 shortlisted
+
+diag_data <- get_model_data(cleaned_data, c(new_relevant_predictors, cand_vars), "LSM_01")
+diag_data$LSM_01   <- (diag_data$LSM_01 + 1)^2
+diag_data$PAADVVOL <- log1p(diag_data$PAADVVOL)
+
+old_fit <- lm(reformulate(c(new_relevant_predictors, "PAADVVOL:GEN_05"), "LSM_01"), data = diag_data)
+diag_data$resid <- rstandard(old_fit)   # standardized, so scale is comparable
+
+diag_dir <- "part_two/figures/missing_variable_diagnostics"
+dir.create(diag_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+1.1 Residuals vs. a candidate that isn't in the model. If a candidate doesn't matter, the median residual should sit flat at 0 across its levels. A trend or shift away from 0 means the current model is systematically wrong for people at certain levels of that candidate (i.e. it's a missing variable). Differences in box height are about heteroskedasticity, not a missing variable.
+
+```{r resid-vs-candidates, fig.width=15, fig.height=9}
+plot_resid_vs_candidates <- function() {
+  op <- par(mfrow = c(2, 3))
+  on.exit(par(op))
+  for (v in cand_vars) {
+    boxplot(diag_data$resid ~ diag_data[[v]],
+            main = paste0(v, "\n", dict[[v]]), xlab = v,
+            ylab = "Standardized residual (current model)", col = "lightblue")
+    abline(h = 0, lty = 2, col = "red")
+  }
+}
+
+# save to file
+png(file.path(diag_dir, "resid_vs_candidates.png"), width = 15, height = 9, units = "in", res = 200)
+plot_resid_vs_candidates()
+invisible(dev.off())
+
+# also show it in the knitted document
+plot_resid_vs_candidates()
+
+# numeric backup: median standardized residual at each level of each candidate
+lapply(setNames(cand_vars, cand_vars), function(v) round(tapply(diag_data$resid, diag_data[[v]], median), 2))
+```
+three of the five candidates show a clear trend in the current model's residuals, so it is likely that the model is missing them. SLP_010 shows only a weak trend, and DHHDGHSZ a small shift.
+
+1.2 Profile the flagged points. Problematic points are flagged using the current model (same rule as the predictor screen: DFFITS or |r_i| > 4). They are split by residual sign, since a missing variable pushes predictions off in a consistent direction: over-predicted points (resid < 0) may share something that lowers life satisfaction, under-predicted points (resid > 0) something that raises it. 
+
+```{r profile-flagged-points}
+flag <- problematic_points(old_fit)
+diag_data$group <- ifelse(!flag, "not flagged",
+                   ifelse(diag_data$resid < 0, "flagged: over-predicted", "flagged: under-predicted"))
+table(diag_data$group)
+
+# % of each group at each level of each candidate (rows sum to 100)
+for (v in cand_vars) {
+  cat("\n==", v, "-", dict[[v]], "==\n")
+  print(round(100 * prop.table(table(diag_data$group, diag_data[[v]]), 1), 1))
+}
+```
+Among points the current model over-predicts, there were markedly more respondents who never find their sleep refreshing (18.9% vs. 3.7% of non-flagged points), report very weak community belonging (26.4% vs. 5.8%), or report much worse mental health since the pandemic (18.9% vs. 3.2%). The under-predicted points largely mirrored this: they more often found their sleep refreshing all of the time (24.1% vs. 13.6%), more often reported improved mental health since the pandemic (31.5% vs. 21.0%), and less often lived alone (25.9% vs. 36.1%). Refreshing sleep showed the clearest two-sided pattern, while the effect of community belonging appeared mainly among over-predicted points. Trouble sleeping (SLP_010) showed no consistent pattern in either group. 
 
 ```{r subset-selection-on-new-model}
 # install.packages("leaps")
@@ -445,10 +514,19 @@ plot_subsets <- function() {
   plot_rs(best, "Cp",   "AIC")
 }
 
+# save to file
+png(file.path(out_dir, "all_possible_subsets_selection_new_model.png"),
+    width = 14, height = 8, units = "in", res = 300)
+plot_subsets()
+invisible(dev.off())
+
+# also show it in the knitted document
 plot_subsets()
 ```
 
-Here, we find that the model with SLP_010 is not great. Thus, we will remove SLP_010 from the final model. The original metrics PAADVVOL (physical activity) and the interaction term with GEN_05 were still not significant. This may change after correcting model assumptions. 
+Here, we find that the model with SLP_010 is not great. 
+
+Taking into account all the analysis we have done, we will remove SLP_010 from the final model. The original metrics PAADVVOL (physical activity) and the interaction term with GEN_05 were still not significant. This may change after correcting model assumptions. 
 
 ```{r fitting-new-fixed-model}
 new_added_predictors <- c(new_relevant_predictors, "SLP_015", "GEN_20", "COV2_005", "DHHDGHSZ")
@@ -542,6 +620,13 @@ plot_subsets <- function() {
   plot_rs(best, "Cp",   "Cp (Proxy for AIC)")
 }
 
+# save to file
+png(file.path(out_dir, "all_possible_subsets_selection_final_model.png"),
+    width = 14, height = 8, units = "in", res = 300)
+plot_subsets()
+invisible(dev.off())
+
+# also show it in the knitted document
 plot_subsets()
 ```
 
@@ -549,7 +634,11 @@ This confirms that removing PAADVVOL and our interaction term are the only actio
 
 We will not perform forward selection to pick new predictors. Since we are particularly interested in inference and not prediction, we will maintain a simpler and interpretable model rather than applying greedy algorithms to get the best model.
 
-Thus, this concludes our final model. In this model, PAADVVOL and our interaction term were not found to be siginificant predictors of life satisfaction. 
+Before we conclude our final models, check about multicolinearity one last time.
+```{r}
+vif(boxcox_new_model, type = "predictor")
+```
+From the results, nothing is violated. Thus, this concludes our final model. In this model, PAADVVOL and our interaction term were not found to be siginificant predictors of life satisfaction. 
 
 ```{r final-summary-output}
 summary(boxcox_new_model)
