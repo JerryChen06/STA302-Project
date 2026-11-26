@@ -184,7 +184,7 @@ subsetted_model <- lm(
 )
 
 # 1. Multicollinearity (VIF)
-vif(subsetted_model)
+vif(subsetted_model, type = "predictor") # added "type" parameter since we have an interaction term.
 
 # 2. Residual Diagnostic Plots
 par(mfrow = c(2, 2))
@@ -196,6 +196,9 @@ coeftest(subsetted_model, vcov = hccm(subsetted_model, type = "hc3"))
 ```
 
 The same skew-corrections and boxcox transformation procedure will be applied to correct normality. 
+
+Note on interpretting GVIF:
+because we have an interaction term we cant use normal vif (the VIFs change depending on which level we choose as the baseline). Instead, we have to use GVIF which captures the volume of similarity between models. But since its a volume it grows with dimensions so we have to look at GVIF^(1/(2*Df)). to compare it to the cutoff of 5 or 10 we have to square the GVIF^(1/(2*Df)).
 
 ```{r subsetted model: skew correction}
 # handing skewness of the numerical predictors
@@ -384,7 +387,7 @@ However, the following predictors seemed promising (increased adjR2, decreased a
 - GEN_20 (sense of belonging to local community)
 - COV2_005 (Self-perceived mental health before / after the pandemic)
 - DHHDGHSZ (Yes = Lives alone, No = Lives with others)
-- SLP_010
+- SLP_010 (Trouble going to sleep or staying asleep - frequency)
 
 For each of these, we will determine whether we see an improvement to AIC. Here we are using AIC (not BIC from before) since we are not concerned with having a simpler model, as we have already subsetted the predictors greatly and are more confident in our choices. Thus, we will compute AIC for each subset. 
 
@@ -549,7 +552,11 @@ This confirms that removing PAADVVOL and our interaction term are the only actio
 
 We will not perform forward selection to pick new predictors. Since we are particularly interested in inference and not prediction, we will maintain a simpler and interpretable model rather than applying greedy algorithms to get the best model.
 
-Thus, this concludes our final model. In this model, PAADVVOL and our interaction term were not found to be siginificant predictors of life satisfaction. 
+Before we conclude our final models, check about multicolinearity one last time.
+```{r}
+vif(boxcox_new_model, type = "predictor")
+```
+From the results, nothing is violated. Thus, this concludes our final model. In this model, PAADVVOL and our interaction term were not found to be siginificant predictors of life satisfaction. 
 
 ```{r final-summary-output}
 summary(boxcox_new_model)
