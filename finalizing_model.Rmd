@@ -644,5 +644,20 @@ From the results, nothing is violated. Thus, this concludes our final model. In 
 summary(boxcox_new_model)
 ```
 
+Finally, we want to validate the model using LOOCV.
+
+```{r model-validtion}
+y_i <- boxcox_new_model_data$LSM_01
+y_i_hat <- fitted(boxcox_new_model)
+h_ii <- hatvalues(boxcox_new_model)
+n <- nobs(boxcox_new_model)
+
+mse_model <- sum((y_i - y_i_hat)^2) / n
+mse_loocv <- sum(((y_i - y_i_hat)/(1 - h_ii))^2) / n
+
+```
+
+The MSE of the LOOCV was 634, compared to our final model's 625.25. This increase is minimal, which suggests that the model was validated. The increase MSE was likely due to the presence of problematic points. Although we tried to add predictors to minimize their presence, some still remained and likely contribute to this increase. 
+
 Notes:
 Interestingly, frequency of refreshing sleep (SLP_015) is strongly and significantly associated with perceived life satisfaction. It is known that both exercise and mental health impact frequency of refreshing sleep. It would be interesting to explore the dynamics between mental health, exercise, and refreshing sleep.
